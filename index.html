@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Split PDF - All to One</title>
+  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js" integrity="sha384-weMABwrltA6jWR8DDe9Jp5blk+tZQh7ugpCsF3JwSA53WZM9/14PjS5LAJNHNjAI" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js" integrity="sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG" crossorigin="anonymous"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f0f2f5;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .container {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 16px rgba(0, 0, 0, 0.1);
+      padding: 40px;
+      max-width: 520px;
+      width: 100%;
+      text-align: center;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      color: #1a1a2e;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      color: #666;
+      margin-bottom: 28px;
+      font-size: 0.95rem;
+    }
+
+    .drop-zone {
+      border: 2px dashed #c0c0c0;
+      border-radius: 10px;
+      padding: 40px 20px;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      margin-bottom: 20px;
+    }
+
+    .drop-zone:hover,
+    .drop-zone.dragover {
+      border-color: #4a6cf7;
+      background: #f5f7ff;
+    }
+
+    .drop-zone p {
+      color: #888;
+      font-size: 0.95rem;
+    }
+
+    .drop-zone .icon {
+      font-size: 2.5rem;
+      margin-bottom: 8px;
+    }
+
+    #file-input {
+      display: none;
+    }
+
+    .file-info {
+      background: #f5f7ff;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 20px;
+      display: none;
+      text-align: left;
+      color: #333;
+      font-size: 0.9rem;
+      word-break: break-all;
+    }
+
+    .file-info span {
+      font-weight: 600;
+    }
+
+    #split-btn {
+      background: #4a6cf7;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 14px 32px;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background 0.2s;
+      width: 100%;
+      display: none;
+    }
+
+    #split-btn:hover {
+      background: #3a5ce5;
+    }
+
+    #split-btn:disabled {
+      background: #a0b0e8;
+      cursor: not-allowed;
+    }
+
+    .progress-section {
+      margin-top: 20px;
+      display: none;
+    }
+
+    .progress-bar-bg {
+      background: #e8e8e8;
+      border-radius: 8px;
+      overflow: hidden;
+      height: 8px;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: #4a6cf7;
+      width: 0%;
+      transition: width 0.3s;
+      border-radius: 8px;
+    }
+
+    .progress-text {
+      margin-top: 8px;
+      color: #666;
+      font-size: 0.85rem;
+    }
+
+    .result {
+      margin-top: 20px;
+      display: none;
+    }
+
+    .result a {
+      display: inline-block;
+      background: #28a745;
+      color: #fff;
+      text-decoration: none;
+      border-radius: 8px;
+      padding: 14px 32px;
+      font-size: 1rem;
+      transition: background 0.2s;
+    }
+
+    .result a:hover {
+      background: #218838;
+    }
+
+    .error {
+      margin-top: 16px;
+      color: #dc3545;
+      font-size: 0.9rem;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📄 Split PDF</h1>
+    <p class="subtitle">Split a multi-page PDF into individual single-page PDFs, bundled as a ZIP.</p>
+
+    <div class="drop-zone" id="drop-zone">
+      <div class="icon">📁</div>
+      <p>Drag & drop a PDF here, or click to browse</p>
+    </div>
+    <input type="file" id="file-input" accept=".pdf,application/pdf" />
+
+    <div class="file-info" id="file-info"></div>
+
+    <button id="split-btn" type="button">Split & Download ZIP</button>
+
+    <div class="progress-section" id="progress-section">
+      <div class="progress-bar-bg">
+        <div class="progress-bar" id="progress-bar"></div>
+      </div>
+      <p class="progress-text" id="progress-text">Processing…</p>
+    </div>
+
+    <div class="result" id="result">
+      <a id="download-link" href="#">⬇️ Download ZIP</a>
+    </div>
+
+    <p class="error" id="error"></p>
+  </div>
+
+  <script>
+    const { PDFDocument } = PDFLib;
+
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const fileInfo = document.getElementById('file-info');
+    const splitBtn = document.getElementById('split-btn');
+    const progressSection = document.getElementById('progress-section');
+    const progressBar = document.getElementById('progress-bar');
+    const progressText = document.getElementById('progress-text');
+    const resultDiv = document.getElementById('result');
+    const downloadLink = document.getElementById('download-link');
+    const errorEl = document.getElementById('error');
+
+    let selectedFile = null;
+
+    // --- Drop zone ---
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('dragover');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('dragover');
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      const files = e.dataTransfer.files;
+      if (files.length > 0 && files[0].type === 'application/pdf') {
+        handleFile(files[0]);
+      }
+    });
+
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files.length > 0) {
+        handleFile(fileInput.files[0]);
+      }
+    });
+
+    function handleFile(file) {
+      selectedFile = file;
+      fileInfo.style.display = 'block';
+      fileInfo.innerHTML = '<span>File:</span> ' + escapeHtml(file.name) + ' (' + formatSize(file.size) + ')';
+      splitBtn.style.display = 'block';
+      resultDiv.style.display = 'none';
+      errorEl.style.display = 'none';
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function formatSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    // --- Split logic ---
+    splitBtn.addEventListener('click', async () => {
+      if (!selectedFile) return;
+
+      splitBtn.disabled = true;
+      resultDiv.style.display = 'none';
+      errorEl.style.display = 'none';
+      progressSection.style.display = 'block';
+      progressBar.style.width = '0%';
+      progressText.textContent = 'Reading PDF…';
+
+      try {
+        const arrayBuffer = await selectedFile.arrayBuffer();
+        const sourcePdf = await PDFDocument.load(arrayBuffer);
+        const totalPages = sourcePdf.getPageCount();
+
+        if (totalPages === 0) {
+          throw new Error('The PDF has no pages.');
+        }
+
+        progressText.textContent = 'Splitting ' + totalPages + ' page(s)…';
+
+        const zip = new JSZip();
+        const baseName = selectedFile.name.replace(/\.pdf$/i, '');
+        const padLen = String(totalPages).length;
+
+        for (let i = 0; i < totalPages; i++) {
+          const newPdf = await PDFDocument.create();
+          const [copiedPage] = await newPdf.copyPages(sourcePdf, [i]);
+          newPdf.addPage(copiedPage);
+
+          const pdfBytes = await newPdf.save();
+          const pageNum = String(i + 1).padStart(padLen, '0');
+          zip.file(baseName + '_page_' + pageNum + '.pdf', pdfBytes);
+
+          const pct = Math.round(((i + 1) / totalPages) * 90);
+          progressBar.style.width = pct + '%';
+          progressText.textContent = 'Split page ' + (i + 1) + ' of ' + totalPages + '…';
+
+          // Yield to the browser every 10 pages to keep UI responsive
+          if (i % 10 === 9) {
+            await new Promise((r) => setTimeout(r, 0));
+          }
+        }
+
+        progressText.textContent = 'Creating ZIP…';
+        progressBar.style.width = '95%';
+
+        const zipBlob = await zip.generateAsync({ type: 'blob' });
+
+        // Revoke any previous object URL
+        if (downloadLink.href.startsWith('blob:')) {
+          URL.revokeObjectURL(downloadLink.href);
+        }
+
+        const url = URL.createObjectURL(zipBlob);
+        downloadLink.href = url;
+        downloadLink.download = baseName + '_split.zip';
+
+        progressBar.style.width = '100%';
+        progressText.textContent = 'Done! ' + totalPages + ' page(s) split successfully.';
+        resultDiv.style.display = 'block';
+      } catch (err) {
+        errorEl.textContent = 'Error: ' + err.message;
+        errorEl.style.display = 'block';
+        progressSection.style.display = 'none';
+      } finally {
+        splitBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
