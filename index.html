@@ -158,6 +158,82 @@
       background: #218838;
     }
 
+    .naming-section {
+      text-align: left;
+      margin-bottom: 20px;
+      display: none;
+    }
+
+    .naming-section label {
+      font-weight: 600;
+      font-size: 0.9rem;
+      color: #333;
+      display: block;
+      margin-bottom: 8px;
+    }
+
+    .preset-options {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .preset-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.88rem;
+      color: #444;
+      cursor: pointer;
+      padding: 6px 10px;
+      border-radius: 6px;
+      transition: background 0.15s;
+    }
+
+    .preset-option:hover {
+      background: #f5f7ff;
+    }
+
+    .preset-option input[type="radio"] {
+      accent-color: #4a6cf7;
+    }
+
+    .preset-option code {
+      background: #eef1f6;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.82rem;
+    }
+
+    .custom-name-input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 0.88rem;
+      margin-top: 6px;
+      display: none;
+      transition: border-color 0.2s;
+    }
+
+    .custom-name-input:focus {
+      outline: none;
+      border-color: #4a6cf7;
+    }
+
+    .name-preview {
+      margin-top: 8px;
+      font-size: 0.82rem;
+      color: #888;
+    }
+
+    .name-preview code {
+      background: #eef1f6;
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: #555;
+    }
+
     .error {
       margin-top: 16px;
       color: #dc3545;
@@ -178,6 +254,30 @@
     <input type="file" id="file-input" accept=".pdf,application/pdf" />
 
     <div class="file-info" id="file-info"></div>
+
+    <div class="naming-section" id="naming-section">
+      <label>Output file naming:</label>
+      <div class="preset-options">
+        <label class="preset-option">
+          <input type="radio" name="naming" value="preset1" checked />
+          <code>{filename}_page_{number}.pdf</code>
+        </label>
+        <label class="preset-option">
+          <input type="radio" name="naming" value="preset2" />
+          <code>{filename}_{number}.pdf</code>
+        </label>
+        <label class="preset-option">
+          <input type="radio" name="naming" value="preset3" />
+          <code>page_{number}.pdf</code>
+        </label>
+        <label class="preset-option">
+          <input type="radio" name="naming" value="custom" />
+          Custom
+        </label>
+      </div>
+      <input type="text" class="custom-name-input" id="custom-name-input" placeholder="e.g. doc_{number} or {filename}-{number} (.pdf added automatically)" />
+      <div class="name-preview" id="name-preview"></div>
+    </div>
 
     <button id="split-btn" type="button">Split & Download ZIP</button>
 
@@ -201,6 +301,9 @@
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('file-input');
     const fileInfo = document.getElementById('file-info');
+    const namingSection = document.getElementById('naming-section');
+    const customNameInput = document.getElementById('custom-name-input');
+    const namePreview = document.getElementById('name-preview');
     const splitBtn = document.getElementById('split-btn');
     const progressSection = document.getElementById('progress-section');
     const progressBar = document.getElementById('progress-bar');
@@ -243,8 +346,10 @@
       fileInfo.style.display = 'block';
       fileInfo.innerHTML = '<span>File:</span> ' + escapeHtml(file.name) + ' (' + formatSize(file.size) + ')';
       splitBtn.style.display = 'block';
+      namingSection.style.display = 'block';
       resultDiv.style.display = 'none';
       errorEl.style.display = 'none';
+      updateNamePreview();
     }
 
     function escapeHtml(text) {
@@ -258,6 +363,49 @@
       if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
       return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
     }
+
+    // --- Naming presets ---
+    function getSelectedPreset() {
+      return document.querySelector('input[name="naming"]:checked').value;
+    }
+
+    function buildFileName(baseName, pageNum, padLen) {
+      const paddedNum = String(pageNum).padStart(padLen, '0');
+      const preset = getSelectedPreset();
+
+      switch (preset) {
+        case 'preset1':
+          return baseName + '_page_' + paddedNum + '.pdf';
+        case 'preset2':
+          return baseName + '_' + paddedNum + '.pdf';
+        case 'preset3':
+          return 'page_' + paddedNum + '.pdf';
+        case 'custom': {
+          const template = customNameInput.value.trim() || '{filename}_{number}';
+          const name = template
+            .replace(/\{filename\}/g, baseName)
+            .replace(/\{number\}/g, paddedNum);
+          return name.endsWith('.pdf') ? name : name + '.pdf';
+        }
+        default:
+          return baseName + '_page_' + paddedNum + '.pdf';
+      }
+    }
+
+    function updateNamePreview() {
+      const preset = getSelectedPreset();
+      customNameInput.style.display = preset === 'custom' ? 'block' : 'none';
+
+      const baseName = selectedFile ? selectedFile.name.replace(/\.pdf$/i, '') : 'document';
+      const example = buildFileName(baseName, 1, 2);
+      namePreview.innerHTML = 'Preview: <code>' + escapeHtml(example) + '</code>';
+    }
+
+    document.querySelectorAll('input[name="naming"]').forEach(function(radio) {
+      radio.addEventListener('change', updateNamePreview);
+    });
+
+    customNameInput.addEventListener('input', updateNamePreview);
 
     // --- Split logic ---
     splitBtn.addEventListener('click', async () => {
@@ -292,7 +440,7 @@
 
           const pdfBytes = await newPdf.save();
           const pageNum = String(i + 1).padStart(padLen, '0');
-          zip.file(baseName + '_page_' + pageNum + '.pdf', pdfBytes);
+          zip.file(buildFileName(baseName, i + 1, padLen), pdfBytes);
 
           const pct = Math.round(((i + 1) / totalPages) * 90);
           progressBar.style.width = pct + '%';
